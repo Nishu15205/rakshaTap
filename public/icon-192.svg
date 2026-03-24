@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#dc2626"/>
+      <stop offset="100%" style="stop-color:#991b1b"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background Circle -->
+  <circle cx="96" cy="96" r="88" fill="url(#bgGrad)"/>
+  
+  <!-- Shield Shape -->
+  <path d="M96 32 L152 56 L152 108 C152 140 124 164 96 172 C68 164 40 140 40 108 L40 56 Z" 
+        fill="none" stroke="#fff" stroke-width="6" stroke-linejoin="round"/>
+  
+  <!-- SOS Text -->
+  <text x="96" y="100" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#fff">SOS</text>
+  
+  <!-- Location pin -->
+  <circle cx="96" cy="64" r="8" fill="#fff"/>
+  <circle cx="96" cy="60" r="3" fill="#dc2626"/>
+</svg>
