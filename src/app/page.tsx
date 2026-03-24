@@ -2,16 +2,25 @@
 
 import { useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Shield, AlertTriangle } from 'lucide-react';
+import { Users, Shield, AlertTriangle, Brain, Mic } from 'lucide-react';
 import { SOSButton } from '@/components/raksha/sos-button';
 import { LocationMap, SafePlacesList } from '@/components/raksha/location-map';
 import { ContactsPanel } from '@/components/raksha/contacts-panel';
 import { SettingsPanel } from '@/components/raksha/settings-panel';
 import { AlertHistory } from '@/components/raksha/alert-history';
 import { Header, BottomNav } from '@/components/raksha/bottom-nav';
+import { VoiceSOSPanel, AIAdvisorPanel } from '@/components/raksha/voice-sos';
+import { OfflineEmergencyTips } from '@/components/raksha/offline-tips';
 import { useRakshaStore } from '@/store/raksha-store';
+import { Badge } from '@/components/ui/badge';
+import { 
+  RunAnywhereStatus, 
+  LocalLLMChat, 
+  RunAnywhereVoiceInput
+} from '@/components/run-anywhere-panel';
+import { DocumentScanner } from '@/components/document-scanner';
 
-// Location tracking hook
+// Location tracking hook with caching
 function useLocationTracking() {
   const {
     setCurrentLocation,
@@ -22,8 +31,25 @@ function useLocationTracking() {
   } = useRakshaStore();
 
   useEffect(() => {
+    // Try to load cached location first
+    const cachedLocation = localStorage.getItem('rakshatap_last_location');
+    if (cachedLocation) {
+      try {
+        const parsed = JSON.parse(cachedLocation);
+        setCurrentLocation(parsed);
+        setLocationLoading(false);
+      } catch {
+        // Ignore parse errors
+      }
+    }
+
     if (!navigator.geolocation) {
-      setLocationError('Geolocation is not supported by your browser');
+      // Use cached location if available
+      if (cachedLocation) {
+        setLocationError(null);
+      } else {
+        setLocationError('Geolocation is not supported by your browser');
+      }
       setLocationLoading(false);
       return;
     }
@@ -32,35 +58,44 @@ function useLocationTracking() {
 
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
-        setCurrentLocation({
+        const newLocation = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           accuracy: position.coords.accuracy,
           timestamp: position.timestamp,
-        });
+        };
+        setCurrentLocation(newLocation);
         setLocationLoading(false);
         setLocationError(null);
+        
+        // Cache the location for offline use
+        localStorage.setItem('rakshatap_last_location', JSON.stringify(newLocation));
       },
       (error) => {
-        let message = 'Unable to get location';
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            message = 'Location permission denied. Please enable location access.';
-            break;
-          case error.POSITION_UNAVAILABLE:
-            message = 'Location information unavailable.';
-            break;
-          case error.TIMEOUT:
-            message = 'Location request timed out.';
-            break;
+        // Don't show error if we have cached location
+        if (cachedLocation) {
+          setLocationError(null);
+        } else {
+          let message = 'Unable to get location - Using last known location';
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+              message = 'Location permission denied. Using last known location.';
+              break;
+            case error.POSITION_UNAVAILABLE:
+              message = 'Location unavailable. Using last known location.';
+              break;
+            case error.TIMEOUT:
+              message = 'Location timeout. Using last known location.';
+              break;
+          }
+          setLocationError(message);
         }
-        setLocationError(message);
         setLocationLoading(false);
       },
       {
         enableHighAccuracy: true,
         timeout: 10000,
-        maximumAge: 5000,
+        maximumAge: 60000, // Allow cached position up to 1 minute
       }
     );
 
@@ -274,6 +309,65 @@ function MapTab() {
   );
 }
 
+// AI Tab - Offline-First AI Features with RunAnywhere SDK
+function AITab() {
+  const { activateSOS, deactivateSOS } = useRakshaStore();
+
+  return (
+    <div className="py-4 px-4 space-y-4">
+      {/* RunAnywhere SDK Status */}
+      <RunAnywhereStatus />
+
+      {/* Local LLM Chat */}
+      <LocalLLMChat />
+
+      {/* Voice-Activated SOS */}
+      <VoiceSOSPanel 
+        onVoiceActivate={activateSOS}
+        onVoiceDeactivate={deactivateSOS}
+      />
+
+      {/* RunAnywhere Voice Input */}
+      <RunAnywhereVoiceInput />
+
+      {/* Document Scanner */}
+      <DocumentScanner />
+
+      {/* AI Emergency Advisor */}
+      <AIAdvisorPanel />
+
+      {/* Offline Emergency Tips */}
+      <OfflineEmergencyTips />
+
+      {/* Features Highlight */}
+      <div className="bg-gradient-to-r from-purple-950/50 to-red-950/50 rounded-xl p-4 border border-purple-800/50">
+        <h3 className="text-white font-medium text-sm mb-3 flex items-center gap-2">
+          <Brain className="w-4 h-4 text-purple-400" />
+          RunAnywhere SDK Features
+        </h3>
+        <ul className="text-zinc-300 text-xs space-y-2">
+          <li className="flex items-center gap-2">
+            <Brain className="w-3 h-3 text-purple-400" />
+            Local LLM (WebLLM) - Dynamic AI responses offline
+          </li>
+          <li className="flex items-center gap-2">
+            <Mic className="w-3 h-3 text-red-400" />
+            Whisper STT - Voice recognition offline
+          </li>
+          <li className="flex items-center gap-2">
+            <Shield className="w-3 h-3 text-green-400" />
+            Vision AI - Document scanning
+          </li>
+          <li className="flex items-center gap-2">
+            <AlertTriangle className="w-3 h-3 text-amber-400" />
+            Zero Cloud Costs - All AI runs locally
+          </li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 // Main App Component
 function RakshaApp() {
   const { activeTab } = useRakshaStore();
@@ -291,6 +385,7 @@ function RakshaApp() {
         <ContactsPanel />
       </div>
     ),
+    ai: <AITab />,
     map: <MapTab />,
     history: (
       <div className="py-4 px-4">

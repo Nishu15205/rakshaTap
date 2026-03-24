@@ -1,0 +1,13 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "bradlc.vscode-tailwindcss",
+    "prisma.prisma",
+    "formulahchry.auto-rename-tag",
+    "christian-kohler.path-intellisense",
+    "dsznajder.es7-react-js-snippets",
+    "eamodio.gitlens",
+    "rangav.vscode-thunder-client"
+  ]
+}

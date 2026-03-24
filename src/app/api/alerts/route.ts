@@ -1,11 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { generateEmergencyMessage, generateSMSUrl, generateTelUrl, generateWhatsAppUrl } from '@/lib/notifications';
+import { db, isDatabaseAvailable } from '@/lib/db';
+import { generateEmergencyMessage, generateSMSUrl, generateTelUrl } from '@/lib/notifications';
+
+// Demo contacts for demo mode
+const DEMO_CONTACTS = [
+  { id: '1', name: 'Mom', phone: '+91 9876543210', isPrimary: true },
+  { id: '2', name: 'Dad', phone: '+91 9876543211', isPrimary: false },
+  { id: '3', name: 'Best Friend', phone: '+91 9876543212', isPrimary: false },
+];
+
+// Demo alerts storage
+let demoAlerts: Array<{
+  id: string;
+  latitude: number;
+  longitude: number;
+  address?: string;
+  status: string;
+  createdAt: string;
+}> = [];
 
 // GET - Fetch all alerts
 export async function GET() {
+  // Demo mode
+  if (!isDatabaseAvailable()) {
+    return NextResponse.json({
+      alerts: demoAlerts,
+      demo: true,
+    });
+  }
+
   try {
-    const alerts = await db.alert.findMany({
+    const alerts = await db!.alert.findMany({
       orderBy: { createdAt: 'desc' },
       include: { contact: true },
       take: 50,
@@ -19,47 +44,94 @@ export async function GET() {
 
 // POST - Create a new alert (SOS triggered)
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { latitude, longitude, address, accuracy, userId = 'default_user', message } = body;
+  const body = await request.json();
+  const { latitude, longitude, address, accuracy, userId = 'default_user', message } = body;
 
+  const defaultMessage = 'EMERGENCY! I need help. This is my current location.';
+  const alertMessage = message || defaultMessage;
+
+  // Generate full emergency message
+  const fullMessage = generateEmergencyMessage('User', alertMessage, latitude, longitude);
+
+  // Demo mode
+  if (!isDatabaseAvailable()) {
+    const newAlert = {
+      id: Date.now().toString(),
+      latitude,
+      longitude,
+      address,
+      status: 'sent',
+      createdAt: new Date().toISOString(),
+    };
+
+    demoAlerts.unshift(newAlert);
+    // Keep only last 20 alerts
+    demoAlerts = demoAlerts.slice(0, 20);
+
+    // Prepare notification URLs for demo contacts
+    const alertResults = DEMO_CONTACTS.map(contact => ({
+      contact: contact.name,
+      alertId: Date.now().toString(),
+      status: 'sent',
+      notifications: {
+        sms: {
+          success: true,
+          native: true,
+          url: generateSMSUrl(contact.phone, fullMessage),
+        },
+        call: { url: generateTelUrl(contact.phone) },
+        whatsapp: {
+          url: `https://wa.me/${contact.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(fullMessage)}`,
+        },
+      },
+    }));
+
+    return NextResponse.json({
+      success: true,
+      alertsCount: DEMO_CONTACTS.length,
+      deliveredCount: 0,
+      sentCount: DEMO_CONTACTS.length,
+      results: alertResults,
+      demo: true,
+      primaryContact: {
+        name: DEMO_CONTACTS[0].name,
+        phone: DEMO_CONTACTS[0].phone,
+        smsUrl: generateSMSUrl(DEMO_CONTACTS[0].phone, fullMessage),
+        telUrl: generateTelUrl(DEMO_CONTACTS[0].phone),
+      },
+      message: 'Demo mode - alerts not persisted. Tap SMS or Call to notify contacts!',
+    });
+  }
+
+  try {
     // Get user settings
-    const userSettings = await db.userSettings.findUnique({
+    const userSettings = await db!.userSettings.findUnique({
       where: { userId },
     });
 
     // Get all emergency contacts
-    const contacts = await db.emergencyContact.findMany({
+    const contacts = await db!.emergencyContact.findMany({
       where: { userId },
       orderBy: [{ isPrimary: 'desc' }, { priority: 'asc' }],
     });
 
     // Get user info
-    const user = await db.user.findUnique({
+    const user = await db!.user.findUnique({
       where: { id: userId },
     });
 
-    const defaultMessage = userSettings?.alertMessage || 'EMERGENCY! I need help. This is my current location.';
-    const alertMessage = message || defaultMessage;
-
-    // Generate full emergency message
-    const fullMessage = generateEmergencyMessage(
-      user?.name || 'User',
-      alertMessage,
-      latitude,
-      longitude
-    );
+    const actualMessage = userSettings?.alertMessage || defaultMessage;
 
     // If no contacts, still create an alert
     if (contacts.length === 0) {
-      const alert = await db.alert.create({
+      const alert = await db!.alert.create({
         data: {
           userId,
           latitude,
           longitude,
           address,
           accuracy,
-          message: alertMessage,
+          message: actualMessage,
           status: 'sent',
           notificationType: 'none',
         },
@@ -86,12 +158,11 @@ export async function POST(request: NextRequest) {
       const telUrl = generateTelUrl(contact.phone);
       const whatsappUrl = `https://wa.me/${contact.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(fullMessage)}`;
 
-      // Determine status - native SMS is always available
-      const status = 'sent'; // Will be delivered when user taps SMS button
+      const status = 'sent';
       sentCount++;
 
       // Create alert record
-      const alert = await db.alert.create({
+      const alert = await db!.alert.create({
         data: {
           userId,
           contactId: contact.id,
@@ -99,7 +170,7 @@ export async function POST(request: NextRequest) {
           longitude,
           address,
           accuracy,
-          message: alertMessage,
+          message: actualMessage,
           status,
           notificationType: 'native_sms',
           notificationId: `native_${Date.now()}_${contact.id}`,

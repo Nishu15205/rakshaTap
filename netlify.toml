@@ -1,0 +1,10 @@
+[build]
+  command = "npm install && npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+  DATABASE_URL = "postgresql://dummy:dummy@localhost:5432/dummy"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

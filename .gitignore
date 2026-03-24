@@ -31,7 +31,14 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
-.env*
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+# But allow .env.example and prisma/.env to be committed
+!.env.example
+!prisma/.env
 
 # vercel
 .vercel
@@ -39,7 +46,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-local-*
 .claude
 .z-ai-config
 dev.log
@@ -47,5 +53,9 @@ test
 prompt
 
 server.log
+
+# Database files (SQLite for local dev)
+/db/
+
 # Skills directory
 /skills/

@@ -78,9 +78,13 @@ interface RakshaState {
   setSosAlerts: (alerts: Alert[]) => void;
   setNotificationResults: (results: NotificationResult | null) => void;
 
+  // Voice Activation State
+  isVoiceEnabled: boolean;
+  setVoiceEnabled: (enabled: boolean) => void;
+
   // UI State
-  activeTab: 'home' | 'contacts' | 'map' | 'settings' | 'history';
-  setActiveTab: (tab: 'home' | 'contacts' | 'map' | 'settings' | 'history') => void;
+  activeTab: 'home' | 'contacts' | 'map' | 'settings' | 'history' | 'ai';
+  setActiveTab: (tab: 'home' | 'contacts' | 'map' | 'settings' | 'history' | 'ai') => void;
   
   // Settings
   settings: {
@@ -92,6 +96,8 @@ interface RakshaState {
     enableTelegram: boolean;
     enableSMS: boolean;
     enableEmail: boolean;
+    voiceActivation: boolean;
+    offlineMode: boolean;
   };
   updateSettings: (settings: Partial<RakshaState['settings']>) => void;
 }
@@ -131,6 +137,10 @@ export const useRakshaStore = create<RakshaState>((set) => ({
   setSosAlerts: (alerts) => set({ sosAlerts: alerts }),
   setNotificationResults: (results) => set({ lastNotificationResults: results }),
 
+  // Voice Activation
+  isVoiceEnabled: false,
+  setVoiceEnabled: (enabled) => set({ isVoiceEnabled: enabled }),
+
   // UI State
   activeTab: 'home',
   setActiveTab: (tab) => set({ activeTab: tab }),
@@ -145,6 +155,8 @@ export const useRakshaStore = create<RakshaState>((set) => ({
     enableTelegram: false,
     enableSMS: false,
     enableEmail: false,
+    voiceActivation: true,
+    offlineMode: true,
   },
   updateSettings: (newSettings) => set((state) => ({
     settings: { ...state.settings, ...newSettings },

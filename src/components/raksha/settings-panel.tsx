@@ -5,6 +5,7 @@ import {
   Settings, 
   MapPin, 
   Volume2, 
+  VolumeX,
   Vibrate, 
   MessageSquare,
   Bell,
@@ -17,7 +18,9 @@ import {
   Save,
   Phone,
   Mail,
-  Globe
+  Globe,
+  Siren,
+  Send
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -44,6 +47,7 @@ export function SettingsPanel({ className }: SettingsPanelProps) {
   const [enableEmail, setEnableEmail] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [autoSendSMS, setAutoSendSMS] = useState(true);
 
   // Load settings from database
   useEffect(() => {
@@ -419,17 +423,36 @@ export function SettingsPanel({ className }: SettingsPanelProps) {
               <Bell className="w-3 h-3" />
               App Notifications
             </h4>
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-white text-sm">Sound Alerts</Label>
-                <p className="text-zinc-500 text-xs">Play alarm when SOS is activated</p>
+            
+            {/* Siren Control - PROMINENT */}
+            <div className="bg-amber-950/30 border border-amber-800 rounded-lg p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    'w-10 h-10 rounded-full flex items-center justify-center',
+                    settings.soundEnabled ? 'bg-red-600' : 'bg-zinc-700'
+                  )}>
+                    {settings.soundEnabled ? (
+                      <Siren className="w-5 h-5 text-white" />
+                    ) : (
+                      <VolumeX className="w-5 h-5 text-zinc-400" />
+                    )}
+                  </div>
+                  <div>
+                    <Label className="text-white font-medium">SOS Siren</Label>
+                    <p className="text-zinc-500 text-xs">
+                      {settings.soundEnabled ? '🔊 Alarm will play on SOS' : '🔇 Siren is muted'}
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={settings.soundEnabled}
+                  onCheckedChange={(checked) => updateSettings({ soundEnabled: checked })}
+                  className="data-[state=checked]:bg-red-600 data-[state=unchecked]:bg-zinc-700"
+                />
               </div>
-              <Switch
-                checked={settings.soundEnabled}
-                onCheckedChange={(checked) => updateSettings({ soundEnabled: checked })}
-                className="data-[state=checked]:bg-red-600"
-              />
             </div>
+            
             <div className="flex items-center justify-between">
               <div>
                 <Label className="text-white text-sm">Vibration</Label>
@@ -439,6 +462,27 @@ export function SettingsPanel({ className }: SettingsPanelProps) {
                 checked={settings.vibrationEnabled}
                 onCheckedChange={(checked) => updateSettings({ vibrationEnabled: checked })}
                 className="data-[state=checked]:bg-red-600"
+              />
+            </div>
+          </div>
+
+          <Separator className="bg-zinc-800" />
+
+          {/* Quick SMS Settings */}
+          <div className="space-y-3">
+            <h4 className="text-zinc-400 text-xs uppercase tracking-wider flex items-center gap-2">
+              <Send className="w-3 h-3" />
+              SOS Actions
+            </h4>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-white text-sm">Auto-send SMS on SOS</Label>
+                <p className="text-zinc-500 text-xs">Automatically open SMS for all contacts when SOS triggers</p>
+              </div>
+              <Switch
+                checked={autoSendSMS}
+                onCheckedChange={setAutoSendSMS}
+                className="data-[state=checked]:bg-green-600"
               />
             </div>
           </div>

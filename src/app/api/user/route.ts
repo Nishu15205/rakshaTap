@@ -1,18 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db, isDatabaseAvailable } from '@/lib/db';
+
+// Demo user settings for demo mode
+const DEMO_USER = {
+  id: 'default_user',
+  name: 'User',
+  phone: null,
+  email: null,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  settings: {
+    id: 'demo_settings',
+    userId: 'default_user',
+    autoShareLocation: true,
+    alertMessage: 'EMERGENCY! I need help. This is my current location.',
+    soundEnabled: true,
+    vibrationEnabled: true,
+    telegramBotToken: null,
+    enableTelegram: false,
+    smsWebhookUrl: null,
+    enableSMS: false,
+    emailWebhookUrl: null,
+    enableEmail: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+};
+
+// In-memory settings for demo mode
+let demoSettings = { ...DEMO_USER.settings };
 
 // GET - Fetch user settings
 export async function GET() {
+  // Demo mode
+  if (!isDatabaseAvailable()) {
+    return NextResponse.json({
+      user: {
+        ...DEMO_USER,
+        settings: demoSettings,
+      },
+      demo: true,
+    });
+  }
+
   try {
     const userId = 'default_user';
-    
-    let user = await db.user.findUnique({
+
+    let user = await db!.user.findUnique({
       where: { id: userId },
       include: { settings: true },
     });
 
     if (!user) {
-      user = await db.user.create({
+      user = await db!.user.create({
         data: {
           id: userId,
           name: 'User',
@@ -31,8 +71,7 @@ export async function GET() {
         include: { settings: true },
       });
     } else if (!user.settings) {
-      // Create settings if missing
-      await db.userSettings.create({
+      await db!.userSettings.create({
         data: {
           userId,
           autoShareLocation: true,
@@ -41,7 +80,7 @@ export async function GET() {
           vibrationEnabled: true,
         },
       });
-      user = await db.user.findUnique({
+      user = await db!.user.findUnique({
         where: { id: userId },
         include: { settings: true },
       });
@@ -56,28 +95,52 @@ export async function GET() {
 
 // PUT - Update user settings
 export async function PUT(request: NextRequest) {
+  const body = await request.json();
+  const { name, phone, email, settings } = body;
+
+  // Demo mode
+  if (!isDatabaseAvailable()) {
+    // Update in-memory settings
+    if (settings) {
+      demoSettings = {
+        ...demoSettings,
+        ...settings,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    return NextResponse.json({
+      user: {
+        ...DEMO_USER,
+        name: name || DEMO_USER.name,
+        phone: phone || DEMO_USER.phone,
+        email: email || DEMO_USER.email,
+        settings: demoSettings,
+      },
+      demo: true,
+      message: 'Demo mode - settings not persisted',
+    });
+  }
+
   try {
     const userId = 'default_user';
-    const body = await request.json();
-    const { name, phone, email, settings } = body;
 
     // Update user info
     if (name || phone || email) {
-      await db.user.update({
+      await db!.user.update({
         where: { id: userId },
-        data: { 
-          ...(name && { name }), 
-          ...(phone && { phone }), 
-          ...(email && { email }) 
+        data: {
+          ...(name && { name }),
+          ...(phone && { phone }),
+          ...(email && { email }),
         },
       });
     }
 
     // Update settings
     if (settings) {
-      // Map frontend field names to database field names
       const dbSettings: Record<string, unknown> = {};
-      
+
       if (settings.alertMessage !== undefined) dbSettings.alertMessage = settings.alertMessage;
       if (settings.autoShareLocation !== undefined) dbSettings.autoShareLocation = settings.autoShareLocation;
       if (settings.soundEnabled !== undefined) dbSettings.soundEnabled = settings.soundEnabled;
@@ -89,7 +152,7 @@ export async function PUT(request: NextRequest) {
       if (settings.emailWebhookUrl !== undefined) dbSettings.emailWebhookUrl = settings.emailWebhookUrl;
       if (settings.enableEmail !== undefined) dbSettings.enableEmail = settings.enableEmail;
 
-      await db.userSettings.upsert({
+      await db!.userSettings.upsert({
         where: { userId },
         update: dbSettings,
         create: {
@@ -99,7 +162,7 @@ export async function PUT(request: NextRequest) {
       });
     }
 
-    const user = await db.user.findUnique({
+    const user = await db!.user.findUnique({
       where: { id: userId },
       include: { settings: true },
     });

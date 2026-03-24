@@ -1,14 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db, isDatabaseAvailable } from '@/lib/db';
 
 // GET - Fetch a single contact
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+
+  // Demo mode
+  if (!isDatabaseAvailable()) {
+    return NextResponse.json({
+      contact: {
+        id,
+        name: 'Demo Contact',
+        phone: '+91 9876543210',
+        email: null,
+        telegramChatId: null,
+        relationship: 'other',
+        isPrimary: false,
+        priority: 0,
+      },
+      demo: true,
+    });
+  }
+
   try {
-    const { id } = await params;
-    const contact = await db.emergencyContact.findUnique({
+    const contact = await db!.emergencyContact.findUnique({
       where: { id },
     });
 
@@ -28,20 +46,40 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+  const body = await request.json();
+  const { name, phone, email, relationship, isPrimary } = body;
+
+  // Demo mode
+  if (!isDatabaseAvailable()) {
+    return NextResponse.json({
+      contact: {
+        id,
+        name: name || 'Demo Contact',
+        phone: phone || '+91 9876543210',
+        email: email || null,
+        telegramChatId: null,
+        relationship: relationship || 'other',
+        isPrimary: isPrimary || false,
+        priority: 0,
+      },
+      demo: true,
+      message: 'Demo mode - contact not persisted',
+    });
+  }
+
   try {
-    const { id } = await params;
-    const body = await request.json();
-    const { name, phone, email, relationship, isPrimary, telegramChatId, userId = 'default_user' } = body;
+    const userId = 'default_user';
 
     // If setting as primary, remove primary from others
     if (isPrimary) {
-      await db.emergencyContact.updateMany({
+      await db!.emergencyContact.updateMany({
         where: { userId, NOT: { id } },
         data: { isPrimary: false },
       });
     }
 
-    const contact = await db.emergencyContact.update({
+    const contact = await db!.emergencyContact.update({
       where: { id },
       data: {
         name,
@@ -49,7 +87,7 @@ export async function PUT(
         email,
         relationship,
         isPrimary,
-        telegramChatId: telegramChatId || null,
+        telegramChatId: null,
       },
     });
 
@@ -65,9 +103,19 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
+
+  // Demo mode
+  if (!isDatabaseAvailable()) {
+    return NextResponse.json({
+      success: true,
+      demo: true,
+      message: 'Demo mode - contact deleted from session only',
+    });
+  }
+
   try {
-    const { id } = await params;
-    await db.emergencyContact.delete({
+    await db!.emergencyContact.delete({
       where: { id },
     });
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Phone, MapPin, X, Send, MessageCircle, Loader2, Volume2, VolumeX, MessageSquare, Check, PhoneCall, ExternalLink } from 'lucide-react';
+import { AlertTriangle, Phone, MapPin, X, Send, MessageCircle, Loader2, Volume2, VolumeX, MessageSquare, Check, PhoneCall, ExternalLink, Siren } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +27,14 @@ interface ContactActionState {
   whatsappOpened: boolean;
 }
 
+// Indian Emergency Helplines
+const EMERGENCY_HELPLINES = [
+  { name: 'Emergency', number: '112', icon: '🚨', color: 'bg-red-600' },
+  { name: 'Police', number: '100', icon: '👮', color: 'bg-blue-600' },
+  { name: 'Women Helpline', number: '181', icon: '👩', color: 'bg-pink-600' },
+  { name: 'Ambulance', number: '102', icon: '🚑', color: 'bg-green-600' },
+];
+
 interface SOSButtonProps {
   onActivate?: () => Promise<unknown>;
   onDeactivate?: () => void;
@@ -49,6 +57,7 @@ export function SOSButton({ onActivate, onDeactivate }: SOSButtonProps) {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [contactActions, setContactActions] = useState<Record<string, ContactActionState>>({});
   const [smsLinks, setSmsLinks] = useState<Record<string, string>>({});
+  const [autoSMSSent, setAutoSMSSent] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const vibrationRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -67,15 +76,19 @@ export function SOSButton({ onActivate, onDeactivate }: SOSButtonProps) {
 
   // Play continuous alarm when SOS is activated
   useEffect(() => {
-    if (isSOSActive && soundEnabled && settings.soundEnabled) {
-      audioService.playContinuousAlarm();
-      
-      if (contacts.length > 0 && primaryContact) {
-        audioService.speakEmergency(`Emergency alert activated! You have ${contacts.length} emergency contact${contacts.length > 1 ? 's' : ''}. Tap Call or SMS to contact ${primaryContact.name}.`);
-      } else {
-        audioService.speakEmergency('Emergency alert activated! Please add emergency contacts in the Contacts tab.');
+    if (isSOSActive) {
+      // Only play sounds if enabled
+      if (soundEnabled && settings.soundEnabled) {
+        audioService.playContinuousAlarm();
+        
+        if (contacts.length > 0 && primaryContact) {
+          audioService.speakEmergency(`Emergency alert activated! You have ${contacts.length} emergency contact${contacts.length > 1 ? 's' : ''}. Tap Call or SMS to contact ${primaryContact.name}.`);
+        } else {
+          audioService.speakEmergency('Emergency alert activated! Please add emergency contacts in the Contacts tab.');
+        }
       }
       
+      // Vibration works independently of sound
       if (navigator.vibrate && settings.vibrationEnabled) {
         const vibrate = () => {
           navigator.vibrate([500, 100, 500, 100, 500, 100, 500]);
@@ -86,7 +99,7 @@ export function SOSButton({ onActivate, onDeactivate }: SOSButtonProps) {
     }
     
     return () => {
-      if (!isSOSActive || !soundEnabled) {
+      if (!isSOSActive) {
         audioService.stopAll();
         if (vibrationRef.current) {
           clearInterval(vibrationRef.current);
@@ -98,6 +111,13 @@ export function SOSButton({ onActivate, onDeactivate }: SOSButtonProps) {
       }
     };
   }, [isSOSActive, soundEnabled, settings.soundEnabled, settings.vibrationEnabled, contacts.length, primaryContact]);
+
+  // Stop sound immediately when muted
+  useEffect(() => {
+    if (!soundEnabled && isSOSActive) {
+      audioService.stopAll();
+    }
+  }, [soundEnabled, isSOSActive]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -180,26 +200,30 @@ ${currentLocation ? `Coordinates: ${currentLocation.latitude.toFixed(6)}, ${curr
   }, [currentLocation, getEmergencyMessage]);
 
   // Make direct call with universal link
-  const makeDirectCall = useCallback((contactId: string, contactName: string, phone: string) => {
+  const makeDirectCall = useCallback((contactId: string | null, contactName: string, phone: string) => {
     const formattedPhone = formatIndianPhone(phone);
     const telUrl = `tel:${formattedPhone}`;
     
-    setContactActions(prev => ({
-      ...prev,
-      [contactId]: { ...prev[contactId], calling: true }
-    }));
+    if (contactId) {
+      setContactActions(prev => ({
+        ...prev,
+        [contactId]: { ...prev[contactId], calling: true }
+      }));
+    }
     
     // Use window.location for better mobile compatibility
     window.location.href = telUrl;
     
     audioService.speakEmergency(`Calling ${contactName}`);
     
-    setTimeout(() => {
-      setContactActions(prev => ({
-        ...prev,
-        [contactId]: { ...prev[contactId], calling: false }
-      }));
-    }, 3000);
+    if (contactId) {
+      setTimeout(() => {
+        setContactActions(prev => ({
+          ...prev,
+          [contactId]: { ...prev[contactId], calling: false }
+        }));
+      }, 3000);
+    }
   }, []);
 
   // Send via WhatsApp
@@ -216,6 +240,39 @@ ${currentLocation ? `Coordinates: ${currentLocation.latitude.toFixed(6)}, ${curr
     window.open(whatsappUrl, '_blank');
     audioService.speakEmergency(`Opening WhatsApp for ${contactName}`);
   }, [getEmergencyMessage]);
+
+  // Send SMS to ALL contacts automatically
+  const sendSMSToAllContacts = useCallback(async () => {
+    if (contacts.length === 0 || autoSMSSent) return;
+    
+    setAutoSMSSent(true);
+    const message = getEmergencyMessage();
+    
+    // Open SMS for each contact with a small delay
+    for (let i = 0; i < contacts.length; i++) {
+      const contact = contacts[i];
+      const formattedPhone = formatIndianPhone(contact.phone);
+      
+      setContactActions(prev => ({
+        ...prev,
+        [contact.id]: { ...prev[contact.id], smsSending: true }
+      }));
+      
+      // Small delay between each
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Open SMS directly
+      const smsUrl = `sms:${formattedPhone}?body=${encodeURIComponent(message)}`;
+      window.location.href = smsUrl;
+      
+      setContactActions(prev => ({
+        ...prev,
+        [contact.id]: { ...prev[contact.id], smsSending: false, smsSent: true }
+      }));
+    }
+    
+    audioService.speakEmergency(`Opening SMS for all ${contacts.length} contacts`);
+  }, [contacts, autoSMSSent, getEmergencyMessage]);
 
   const handlePressStart = () => {
     if (isSOSActive) {
@@ -257,6 +314,7 @@ ${currentLocation ? `Coordinates: ${currentLocation.latitude.toFixed(6)}, ${curr
     setNotificationResults(null);
     setContactActions({});
     setSmsLinks({});
+    setAutoSMSSent(false);
     
     try {
       if (onActivate) {
@@ -295,12 +353,19 @@ ${currentLocation ? `Coordinates: ${currentLocation.latitude.toFixed(6)}, ${curr
       
       setAlertStatus('delivered');
       
+      // AUTO SEND SMS TO ALL CONTACTS
+      if (contacts.length > 0) {
+        setTimeout(() => {
+          sendSMSToAllContacts();
+        }, 1000);
+      }
+      
     } catch (error) {
       console.error('Error triggering SOS:', error);
       setAlertStatus('failed');
       setErrorMessage('Failed to send alerts. Use direct SMS/Call below.');
     }
-  }, [onActivate]);
+  }, [onActivate, contacts.length, sendSMSToAllContacts]);
 
   const handleDeactivate = () => {
     audioService.stopAll();
@@ -322,6 +387,7 @@ ${currentLocation ? `Coordinates: ${currentLocation.latitude.toFixed(6)}, ${curr
     setErrorMessage(null);
     setContactActions({});
     setSmsLinks({});
+    setAutoSMSSent(false);
     
     if (soundEnabled) {
       audioService.speakEmergency('Emergency alert deactivated. Stay safe!');
@@ -330,7 +396,13 @@ ${currentLocation ? `Coordinates: ${currentLocation.latitude.toFixed(6)}, ${curr
 
   const toggleSound = () => {
     if (soundEnabled) {
+      // Muting - stop all sounds immediately
       audioService.stopAll();
+    } else {
+      // Unmuting - restart alarm if SOS is active
+      if (isSOSActive) {
+        audioService.playContinuousAlarm();
+      }
     }
     setSoundEnabled(!soundEnabled);
   };
@@ -444,6 +516,33 @@ ${currentLocation ? `Coordinates: ${currentLocation.latitude.toFixed(6)}, ${curr
         </div>
       )}
 
+      {/* EMERGENCY HELPLINES - Quick Call Buttons */}
+      {!isSOSActive && (
+        <div className="w-full max-w-sm">
+          <p className="text-zinc-400 text-xs uppercase tracking-wider font-medium mb-2 text-center">
+            🚨 Emergency Helplines - Tap to Call
+          </p>
+          <div className="grid grid-cols-4 gap-2">
+            {EMERGENCY_HELPLINES.map((helpline) => (
+              <a
+                key={helpline.number}
+                href={`tel:${helpline.number}`}
+                className={cn(
+                  'flex flex-col items-center justify-center p-3 rounded-xl text-white',
+                  'transition-all shadow-lg active:scale-95',
+                  helpline.color
+                )}
+                onClick={() => audioService.speakEmergency(`Calling ${helpline.name}`)}
+              >
+                <span className="text-2xl mb-1">{helpline.icon}</span>
+                <span className="font-bold text-lg">{helpline.number}</span>
+                <span className="text-xs opacity-80">{helpline.name}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Status indicators */}
       {isSOSActive && (
         <motion.div
@@ -453,21 +552,60 @@ ${currentLocation ? `Coordinates: ${currentLocation.latitude.toFixed(6)}, ${curr
         >
           <Card className="bg-red-950/50 border-red-800">
             <CardContent className="p-4 space-y-3">
-              {/* Sound Control */}
-              <div className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2 text-amber-400">
-                  {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-                  <span>Alarm {soundEnabled ? 'ON 🔊' : 'OFF 🔇'}</span>
+              {/* Sound Control - PROMINENT */}
+              <div className="flex items-center justify-between bg-zinc-800 rounded-lg p-3">
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    'w-10 h-10 rounded-full flex items-center justify-center',
+                    soundEnabled ? 'bg-amber-600 animate-pulse' : 'bg-zinc-700'
+                  )}>
+                    {soundEnabled ? (
+                      <Siren className="w-5 h-5 text-white" />
+                    ) : (
+                      <VolumeX className="w-5 h-5 text-zinc-400" />
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-white font-medium">Siren</span>
+                    <p className="text-zinc-400 text-xs">
+                      {soundEnabled ? '🔊 Playing alarm' : '🔇 Muted'}
+                    </p>
+                  </div>
                 </div>
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs text-zinc-400 hover:text-white"
+                  size="lg"
+                  variant={soundEnabled ? 'destructive' : 'default'}
+                  className={cn(
+                    'min-w-[80px]',
+                    soundEnabled 
+                      ? 'bg-red-600 hover:bg-red-700' 
+                      : 'bg-green-600 hover:bg-green-700'
+                  )}
                   onClick={toggleSound}
                 >
-                  {soundEnabled ? 'Mute' : 'Unmute'}
+                  {soundEnabled ? (
+                    <>
+                      <VolumeX className="w-4 h-4 mr-1" />
+                      MUTE
+                    </>
+                  ) : (
+                    <>
+                      <Volume2 className="w-4 h-4 mr-1" />
+                      UNMUTE
+                    </>
+                  )}
                 </Button>
               </div>
+
+              {/* Auto SMS Status */}
+              {autoSMSSent && contacts.length > 0 && (
+                <div className="bg-green-950/50 border border-green-700 rounded-lg p-2 text-center">
+                  <p className="text-green-400 text-sm flex items-center justify-center gap-2">
+                    <Check className="w-4 h-4" />
+                    SMS opened for {contacts.length} contact{contacts.length > 1 ? 's' : ''}
+                  </p>
+                </div>
+              )}
 
               {/* No contacts message */}
               {contacts.length === 0 && (
@@ -501,6 +639,26 @@ ${currentLocation ? `Coordinates: ${currentLocation.latitude.toFixed(6)}, ${curr
                 )}
               </div>
 
+              {/* EMERGENCY HELPLINES - During SOS */}
+              <div className="space-y-2">
+                <p className="text-zinc-400 text-xs uppercase tracking-wider">🚨 Emergency Helplines</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {EMERGENCY_HELPLINES.map((helpline) => (
+                    <a
+                      key={helpline.number}
+                      href={`tel:${helpline.number}`}
+                      className={cn(
+                        'flex flex-col items-center justify-center py-2 rounded-md text-white',
+                        helpline.color
+                      )}
+                    >
+                      <span className="text-lg">{helpline.icon}</span>
+                      <span className="font-bold">{helpline.number}</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+
               {/* Quick Actions - Direct SMS & Call */}
               {contacts.length > 0 && primaryContact && (
                 <div className="space-y-2">
@@ -514,7 +672,8 @@ ${currentLocation ? `Coordinates: ${currentLocation.latitude.toFixed(6)}, ${curr
                       className="h-6 text-xs border-blue-700 text-blue-400"
                       onClick={sendToAllContacts}
                     >
-                      Send to All
+                      <Send className="w-3 h-3 mr-1" />
+                      SMS All
                     </Button>
                   </div>
                   

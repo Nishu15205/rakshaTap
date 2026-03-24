@@ -1,6 +1,6 @@
 'use client';
 
-import { Home, Users, Map, Settings, History, Shield } from 'lucide-react';
+import { Home, Users, Map, Settings, History, Shield, Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useRakshaStore } from '@/store/raksha-store';
 import { motion } from 'framer-motion';
@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 const navItems = [
   { id: 'home' as const, label: 'Home', icon: Home },
   { id: 'contacts' as const, label: 'Contacts', icon: Users },
+  { id: 'ai' as const, label: 'AI Help', icon: Brain },
   { id: 'map' as const, label: 'Map', icon: Map },
   { id: 'history' as const, label: 'History', icon: History },
   { id: 'settings' as const, label: 'Settings', icon: Settings },
