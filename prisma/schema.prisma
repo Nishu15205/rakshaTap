@@ -1,0 +1,92 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String             @id @default(cuid())
+  name            String?
+  phone           String?
+  email           String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  emergencyContacts EmergencyContact[]
+  alerts          Alert[]
+  settings        UserSettings?
+}
+
+model UserSettings {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  autoShareLocation Boolean  @default(true)
+  alertMessage      String   @default("EMERGENCY! I need help. This is my current location.")
+  soundEnabled      Boolean  @default(true)
+  vibrationEnabled  Boolean  @default(true)
+  // Telegram settings
+  telegramBotToken  String?
+  enableTelegram    Boolean  @default(false)
+  // SMS settings (connect to Twilio, MSG91, etc.)
+  smsWebhookUrl     String?  // Webhook URL for SMS service
+  enableSMS         Boolean  @default(false)
+  // Email settings (connect to Resend, SendGrid, etc.)
+  emailWebhookUrl   String?  // Webhook URL for email service
+  enableEmail       Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model EmergencyContact {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  phone           String
+  email           String?
+  telegramChatId  String?  // Telegram chat ID for sending messages
+  relationship    String?  // parent, sibling, friend, spouse, other
+  isPrimary       Boolean  @default(false)
+  priority        Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  alerts          Alert[]
+}
+
+model Alert {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contactId        String?
+  contact          EmergencyContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  latitude         Float
+  longitude        Float
+  address          String?
+  accuracy         Float?
+  status           String   @default("sent") // sent, delivered, failed, acknowledged
+  notificationType String? // telegram, sms, email
+  notificationId   String? // External notification ID for tracking
+  errorMessage     String? // Error message if notification failed
+  message          String?
+  createdAt        DateTime @default(now())
+  acknowledgedAt   DateTime?
+}
+
+model SafePlace {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   // police, hospital, safe_zone, shelter
+  latitude    Float
+  longitude   Float
+  address     String?
+  phone       String?
+  isOpen24    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
