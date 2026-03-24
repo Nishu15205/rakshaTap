@@ -2,10 +2,10 @@
 
 import { useSyncExternalStore, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, Wifi, WifiOff, X } from 'lucide-react';
+import { Download, Wifi, WifiOff, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-// Custom hook for online status that works with SSR
+// Custom hook for online status
 function useOnlineStatus() {
   const subscribe = useCallback((callback: () => void) => {
     window.addEventListener('online', callback);
@@ -20,10 +20,7 @@ function useOnlineStatus() {
     return navigator.onLine;
   }, []);
 
-  const getServerSnapshot = useCallback(() => {
-    // Always return true on server to match initial client render
-    return true;
-  }, []);
+  const getServerSnapshot = useCallback(() => true, []);
 
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
@@ -34,6 +31,7 @@ export function ServiceWorkerRegistration() {
   const [isInstallable, setIsInstallable] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<Event | null>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [isCached, setIsCached] = useState(false);
 
   useEffect(() => {
     // Register service worker
@@ -43,18 +41,26 @@ export function ServiceWorkerRegistration() {
         .then((registration) => {
           console.log('SW registered:', registration.scope);
           
-          // Force update check
-          registration.update().catch(() => {});
+          // Check if already controlled (cached)
+          if (navigator.serviceWorker.controller) {
+            setIsCached(true);
+          }
+          
+          // Force cache the page
+          if (registration.active) {
+            registration.active.postMessage({ type: 'CACHE_ALL' });
+          }
           
           // Check for updates
           registration.addEventListener('updatefound', () => {
             const newWorker = registration.installing;
             if (newWorker) {
               newWorker.addEventListener('statechange', () => {
-                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                  console.log('New version available!');
-                  // Auto-activate new version
-                  newWorker.postMessage({ type: 'SKIP_WAITING' });
+                if (newWorker.state === 'installed') {
+                  setIsCached(true);
+                  if (navigator.serviceWorker.controller) {
+                    newWorker.postMessage({ type: 'SKIP_WAITING' });
+                  }
                 }
               });
             }
@@ -64,9 +70,9 @@ export function ServiceWorkerRegistration() {
           console.error('SW registration failed:', error);
         });
         
-      // Handle controller change (new version activated)
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         console.log('New service worker activated');
+        setIsCached(true);
       });
     }
 
@@ -88,10 +94,7 @@ export function ServiceWorkerRegistration() {
   const handleInstall = async () => {
     if (!deferredPrompt) return;
 
-    // Show the install prompt
     (deferredPrompt as BeforeInstallPromptEvent).prompt();
-
-    // Wait for the user's response
     const { outcome } = await (deferredPrompt as BeforeInstallPromptEvent).userChoice;
 
     if (outcome === 'accepted') {
@@ -115,7 +118,7 @@ export function ServiceWorkerRegistration() {
             className="fixed top-0 left-0 right-0 z-[100] bg-amber-600 text-white px-4 py-2 flex items-center justify-center gap-2 text-sm"
           >
             <WifiOff className="w-4 h-4" />
-            <span>You&apos;re offline - Core features still work!</span>
+            <span>You&apos;re offline - App still works!</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -165,17 +168,22 @@ export function ServiceWorkerRegistration() {
           <WifiOff className="w-5 h-5 text-white" />
         </div>
       )}
+
+      {/* Cached Indicator - shows app is ready for offline */}
+      {isCached && !isOffline && (
+        <div className="fixed bottom-24 right-4 z-50 bg-green-600 rounded-full p-2 shadow-lg opacity-50 hover:opacity-100 transition-opacity" title="App ready for offline use">
+          <CheckCircle className="w-5 h-5 text-white" />
+        </div>
+      )}
     </>
   );
 }
 
-// Type for BeforeInstallPromptEvent
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
-// PWA Status Component
 export function PWAStatus() {
   const isOnline = useOnlineStatus();
 
